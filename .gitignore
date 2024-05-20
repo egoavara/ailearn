@@ -1,0 +1,7 @@
+# AI models
+*.keras
+*.pt
+*.pth
+
+# Tensorboard log
+runs/
