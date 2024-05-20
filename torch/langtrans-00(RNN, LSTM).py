@@ -105,7 +105,7 @@ class TranslationDataset(Dataset):
 
 
 dataset = TranslationDataset(eng_texts, kor_texts, tokenizer_eng, tokenizer_kor, 128)
-dataloader = DataLoader(dataset, batch_size=128, shuffle=True)
+dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
 
 # %%
 # model
