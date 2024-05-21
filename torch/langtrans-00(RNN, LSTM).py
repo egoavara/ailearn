@@ -68,7 +68,7 @@ class TranslationDataset(Dataset):
             return_tensors="pt",
             add_special_tokens=False,
         )
-        kor_tokenized = tokenizer_eng(
+        kor_tokenized = tokenizer_kor(
             self.kor_texts[idx],
             padding=True,
             truncation=True,
@@ -98,15 +98,14 @@ class TranslationDataset(Dataset):
             value=self.tokenizer_kor.pad_token_id,
         )
         return {
-            "eng_in": eng_input,
-            "kor_in": kor_input,
-            "kor_trg": kor_target,
+            "eng_in": eng_input.to(torch.int64),
+            "kor_in": kor_input.to(torch.int64),
+            "kor_trg": kor_target.to(torch.int64),
         }
 
 
 dataset = TranslationDataset(eng_texts, kor_texts, tokenizer_eng, tokenizer_kor, 128)
-dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
-
+dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
 # %%
 # model
 
@@ -166,9 +165,9 @@ with SummaryWriter() as writer:
     first_batch = next(iter(dataloader))
     seq_eng_input = first_batch["eng_in"].to(device)
     seq_kor_input = first_batch["kor_in"].to(device)
-    writer.add_graph(
-        model, [seq_eng_input[:10].to(device), seq_kor_input[:10].to(device)]
-    )
+    writer.add_graph(model, [seq_eng_input[:10], seq_kor_input[:10]])
+    del seq_eng_input, seq_kor_input
+    torch.cuda.empty_cache()
 print(model)
 if os.path.exists(MODEL_PATH):
     print("Loading model")
@@ -180,7 +179,7 @@ criterion = nn.CrossEntropyLoss(
     ignore_index=tokenizer_kor.pad_token_id
 )  # assuming 0 is the padding index
 optimizer = optim.Adam(model.parameters(), lr=0.001)
-num_epochs = 1
+num_epochs = 7
 model.train()
 with SummaryWriter() as writer:
     for epoch in range(num_epochs):
@@ -202,8 +201,6 @@ with SummaryWriter() as writer:
                 writer.add_scalar("Loss/train", loss, epoch)
                 loss.backward()
                 optimizer.step()
-
-                del eng_in, kor_in, kor_trg, output
 # %%
 # 모델 저장
 torch.save(model.state_dict(), MODEL_PATH)
@@ -225,11 +222,12 @@ def token_postprocessing(token_ids, tokenizer):
 model.eval()
 with torch.no_grad():
     # 램덤하게 선택
-    index = np.random.randint(0, len(seq_eng_input))
-    print(f"index : {index} / {len(seq_eng_input)}")
-    sample_eng = seq_eng_input[index].unsqueeze(0).to(device)
-    sample_kor = seq_kor_input[index].unsqueeze(0).to(device)
-
+    index = np.random.randint(0, len(dataset))
+    print(f"index : {index} / {len(dataset)}")
+    sample_eng = dataset[index]["eng_in"].unsqueeze(0).to(device)
+    sample_kor = dataset[index]["kor_in"].unsqueeze(0).to(device)
+    print(sample_eng)
+    print(sample_kor)
     output = model(sample_eng, sample_kor)
     predicted_ids = torch.argmax(output, dim=-1)
     predicted_tokens = tokenizer_kor.convert_ids_to_tokens(predicted_ids[0])
